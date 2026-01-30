@@ -7,6 +7,7 @@ import { webhookRouter } from './webhooks';
 import { aiRouter } from './ai';
 import { dashboardRouter } from './dashboard';
 import { userRouter } from './users';
+import { departmentRouter } from './departments';
 
 export const router = Router();
 
@@ -18,3 +19,4 @@ router.use('/webhooks', webhookRouter);
 router.use('/ai', aiRouter);
 router.use('/dashboard', dashboardRouter);
 router.use('/users', userRouter);
+router.use('/departments', departmentRouter);

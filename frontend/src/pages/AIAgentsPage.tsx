@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Bot, Plus, BookOpen, Brain, Trash2, TestTube, Save } from 'lucide-react';
+import { Bot, Plus, BookOpen, Brain, Trash2, TestTube, Save, Play, Pause, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface AIAgent {
@@ -15,6 +15,12 @@ interface AIAgent {
   totalInteractions: number;
   satisfactionScore: number;
   knowledgeBases: KBEntry[];
+  readiness: 'training' | 'ready' | 'active' | 'paused';
+  minKnowledgeEntries: number;
+  minTestInteractions: number;
+  testInteractions: number;
+  minConfidenceScore: number;
+  escalateOnLowConfidence: boolean;
 }
 
 interface KBEntry {
@@ -124,6 +130,49 @@ export default function AIAgentsPage() {
     }
   };
 
+  const checkReadiness = async () => {
+    if (!selected) return;
+    try {
+      const { data } = await api.get(`/ai/agents/${selected.id}/readiness`);
+      const msg = data.ready
+        ? 'Bot pronto para ativação!'
+        : `Ainda não pronto: ${data.reasons?.join(', ')}`;
+      data.ready ? toast.success(msg) : toast(msg, { icon: '⚠️' });
+      loadAgents();
+    } catch (err) {
+      toast.error('Erro ao verificar prontidão');
+    }
+  };
+
+  const activateBot = async () => {
+    if (!selected) return;
+    try {
+      await api.post(`/ai/agents/${selected.id}/activate`);
+      toast.success('Bot ativado com sucesso!');
+      loadAgents();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Bot ainda não está pronto para ativação');
+    }
+  };
+
+  const pauseBot = async () => {
+    if (!selected) return;
+    try {
+      await api.post(`/ai/agents/${selected.id}/pause`);
+      toast.success('Bot pausado');
+      loadAgents();
+    } catch (err) {
+      toast.error('Erro ao pausar bot');
+    }
+  };
+
+  const readinessColors: Record<string, { bg: string; text: string; label: string }> = {
+    training: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Em Treinamento' },
+    ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Pronto para Ativar' },
+    active: { bg: 'bg-green-100', text: 'text-green-700', label: 'Ativo' },
+    paused: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pausado' },
+  };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-6">
@@ -176,9 +225,12 @@ export default function AIAgentsPage() {
                 >
                   <div className="flex items-center gap-2">
                     <Bot className={`w-5 h-5 ${selected?.id === agent.id ? 'text-primary-600' : 'text-gray-400'}`} />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium">{agent.name}</p>
                       <p className="text-xs text-gray-500">{agent.totalInteractions} interações</p>
+                      <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full mt-1 ${readinessColors[agent.readiness]?.bg || 'bg-gray-100'} ${readinessColors[agent.readiness]?.text || 'text-gray-600'}`}>
+                        {readinessColors[agent.readiness]?.label || agent.readiness}
+                      </span>
                     </div>
                   </div>
                 </button>
@@ -246,6 +298,84 @@ export default function AIAgentsPage() {
                         <span className="text-sm text-gray-700">Aprender com conversas</span>
                       </label>
                     </div>
+                    {/* Readiness Panel */}
+                    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" /> Prontidão do Bot
+                      </h4>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm text-gray-600">Status atual:</span>
+                        <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${readinessColors[selected.readiness]?.bg} ${readinessColors[selected.readiness]?.text}`}>
+                          {readinessColors[selected.readiness]?.label}
+                        </span>
+                      </div>
+
+                      {/* Progress bars */}
+                      <div className="space-y-3 mb-4">
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>Base de Conhecimento</span>
+                            <span>{selected.knowledgeBases?.length || 0} / {selected.minKnowledgeEntries} entradas</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-blue-500 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, ((selected.knowledgeBases?.length || 0) / (selected.minKnowledgeEntries || 1)) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 mb-1">
+                            <span>Interações de Teste</span>
+                            <span>{selected.testInteractions || 0} / {selected.minTestInteractions}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-green-500 h-2 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, ((selected.testInteractions || 0) / (selected.minTestInteractions || 1)) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Min. Entradas KB</label>
+                          <input type="number" className="input text-sm" value={selected.minKnowledgeEntries} onChange={(e) => setSelected({ ...selected, minKnowledgeEntries: parseInt(e.target.value) || 0 })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Min. Testes</label>
+                          <input type="number" className="input text-sm" value={selected.minTestInteractions} onChange={(e) => setSelected({ ...selected, minTestInteractions: parseInt(e.target.value) || 0 })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Confiança Mínima</label>
+                          <input type="number" className="input text-sm" min="0" max="1" step="0.1" value={selected.minConfidenceScore} onChange={(e) => setSelected({ ...selected, minConfidenceScore: parseFloat(e.target.value) || 0 })} />
+                        </div>
+                        <div className="flex items-end">
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" className="w-4 h-4 text-primary-600 rounded" checked={selected.escalateOnLowConfidence} onChange={(e) => setSelected({ ...selected, escalateOnLowConfidence: e.target.checked })} />
+                            <span className="text-xs text-gray-700">Escalar se inseguro</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button onClick={checkReadiness} className="btn-secondary text-xs py-1.5 flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" /> Verificar Prontidão
+                        </button>
+                        {(selected.readiness === 'ready' || selected.readiness === 'paused') && (
+                          <button onClick={activateBot} className="bg-green-600 text-white text-xs py-1.5 px-3 rounded-lg hover:bg-green-700 flex items-center gap-1">
+                            <Play className="w-3.5 h-3.5" /> Ativar Bot
+                          </button>
+                        )}
+                        {selected.readiness === 'active' && (
+                          <button onClick={pauseBot} className="bg-orange-500 text-white text-xs py-1.5 px-3 rounded-lg hover:bg-orange-600 flex items-center gap-1">
+                            <Pause className="w-3.5 h-3.5" /> Pausar Bot
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="flex gap-2 pt-2">
                       <button onClick={updateAgent} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                       <button onClick={triggerLearning} className="btn-secondary flex items-center gap-2"><Brain className="w-4 h-4" /> Processar Aprendizado</button>

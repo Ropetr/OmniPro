@@ -43,6 +43,29 @@ export class AIAgent {
   @Column({ type: 'float', default: 0 })
   satisfactionScore: number;
 
+  // === Learning readiness ===
+  @Column({ type: 'varchar', length: 50, default: 'training' })
+  readiness: 'training' | 'ready' | 'active' | 'paused';
+  // training = still learning, cannot auto-reply
+  // ready = learned enough, admin can activate
+  // active = live, auto-replying to customers
+  // paused = manually paused by admin
+
+  @Column({ type: 'int', default: 10 })
+  minKnowledgeEntries: number; // Minimum KB entries to become "ready"
+
+  @Column({ type: 'int', default: 50 })
+  minTestInteractions: number; // Min test interactions before "ready"
+
+  @Column({ type: 'int', default: 0 })
+  testInteractions: number; // Counter for test-mode interactions
+
+  @Column({ type: 'float', default: 0.7 })
+  minConfidenceScore: number; // Minimum confidence to auto-reply (0-1)
+
+  @Column({ type: 'boolean', default: true })
+  escalateOnLowConfidence: boolean; // Transfer to human if unsure
+
   @Column({ type: 'uuid' })
   tenantId: string;
 

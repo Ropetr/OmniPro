@@ -4,11 +4,23 @@ import { getSocket } from '../lib/socket';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Search, Send, User, MoreVertical, Phone, MessageSquare,
-  Globe, X, UserPlus, Archive,
+  Globe, X, UserPlus, Archive, ArrowRightLeft, Building2, Users,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+
+interface Department {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface AgentUser {
+  id: string;
+  name: string;
+  status: string;
+}
 
 interface Conversation {
   id: string;
@@ -20,6 +32,7 @@ interface Conversation {
   contact: { id: string; name: string; avatar: string; source: string; phone: string; email: string };
   channel: { id: string; name: string; type: string };
   assignedTo: { id: string; name: string } | null;
+  department: Department | null;
 }
 
 interface Message {
@@ -50,6 +63,10 @@ export default function ConversationsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [showTransferMenu, setShowTransferMenu] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [agents, setAgents] = useState<AgentUser[]>([]);
+  const [transferReason, setTransferReason] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load conversations
@@ -157,6 +174,56 @@ export default function ConversationsPage() {
     }
   };
 
+  // Load departments and agents for transfer
+  const loadTransferData = async () => {
+    try {
+      const [deptRes, usersRes] = await Promise.all([
+        api.get('/departments'),
+        api.get('/users'),
+      ]);
+      setDepartments(deptRes.data);
+      setAgents(usersRes.data.filter((u: any) => u.role === 'agent' || u.role === 'supervisor'));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openTransferMenu = () => {
+    loadTransferData();
+    setShowTransferMenu(true);
+    setTransferReason('');
+  };
+
+  const transferToDepartment = async (departmentId: string) => {
+    if (!selected) return;
+    try {
+      await api.post(`/conversations/${selected.id}/transfer/department`, {
+        departmentId,
+        reason: transferReason || undefined,
+      });
+      toast.success('Conversa transferida para o departamento');
+      setShowTransferMenu(false);
+      loadConversations();
+    } catch (err) {
+      toast.error('Erro ao transferir conversa');
+    }
+  };
+
+  const transferToAgent = async (agentId: string) => {
+    if (!selected) return;
+    try {
+      await api.post(`/conversations/${selected.id}/transfer/agent`, {
+        agentId,
+        reason: transferReason || undefined,
+      });
+      toast.success('Conversa transferida para o agente');
+      setShowTransferMenu(false);
+      loadConversations();
+    } catch (err) {
+      toast.error('Erro ao transferir conversa');
+    }
+  };
+
   const scrollToBottom = () => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
@@ -238,6 +305,11 @@ export default function ConversationsPage() {
                         {conv.status === 'open' ? 'Aberta' : conv.status === 'assigned' ? 'Atribuída' : conv.status === 'pending' ? 'Pendente' : 'Fechada'}
                       </span>
                       {conv.isBot && <span className="badge badge-blue">Bot</span>}
+                      {conv.department && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: conv.department.color + '20', color: conv.department.color }}>
+                          {conv.department.name}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -267,6 +339,11 @@ export default function ConversationsPage() {
               {selected.status !== 'assigned' && (
                 <button onClick={assignToMe} className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1">
                   <UserPlus className="w-3.5 h-3.5" /> Atribuir a mim
+                </button>
+              )}
+              {selected.status !== 'closed' && (
+                <button onClick={openTransferMenu} className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1">
+                  <ArrowRightLeft className="w-3.5 h-3.5" /> Transferir
                 </button>
               )}
               {selected.status !== 'closed' && (
@@ -327,6 +404,76 @@ export default function ConversationsPage() {
                 >
                   <Send className="w-4 h-4" />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Transfer Modal */}
+          {showTransferMenu && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+                <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Transferir Conversa</h3>
+                  <button onClick={() => setShowTransferMenu(false)} className="text-gray-400 hover:text-gray-600">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-4">
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Motivo (opcional)</label>
+                    <input
+                      className="input"
+                      placeholder="Ex: Cliente precisa de suporte técnico"
+                      value={transferReason}
+                      onChange={(e) => setTransferReason(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Transfer to department */}
+                  <div className="mb-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <Building2 className="w-4 h-4" /> Transferir para Departamento
+                    </h4>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {departments.map(dept => (
+                        <button
+                          key={dept.id}
+                          onClick={() => transferToDepartment(dept.id)}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: dept.color }} />
+                          <span className="text-sm text-gray-900">{dept.name}</span>
+                        </button>
+                      ))}
+                      {departments.length === 0 && (
+                        <p className="text-xs text-gray-500 py-2">Nenhum departamento cadastrado</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Transfer to agent */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Transferir para Agente
+                    </h4>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {agents.map(agent => (
+                        <button
+                          key={agent.id}
+                          onClick={() => transferToAgent(agent.id)}
+                          className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <div className={`w-2.5 h-2.5 rounded-full ${agent.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          <span className="text-sm text-gray-900">{agent.name}</span>
+                          <span className="text-xs text-gray-400 ml-auto">{agent.status === 'online' ? 'Online' : 'Offline'}</span>
+                        </button>
+                      ))}
+                      {agents.length === 0 && (
+                        <p className="text-xs text-gray-500 py-2">Nenhum agente disponível</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

@@ -45,6 +45,16 @@ export function initializeSocketIO(server: HttpServer): Server {
     const redis = getRedis();
     redis.sadd(`online_agents:${tenantId}`, userId);
 
+    // Process queue when agent comes online
+    setTimeout(async () => {
+      try {
+        const { QueueService } = require('../services/QueueService');
+        await QueueService.processQueue(tenantId);
+      } catch (e) {
+        logger.debug('Queue processing on agent connect skipped');
+      }
+    }, 1000);
+
     socket.on('join_conversation', (conversationId: string) => {
       socket.join(`conversation:${conversationId}`);
       logger.info(`Agent ${userId} joined conversation ${conversationId}`);

@@ -10,6 +10,7 @@ import ChannelsPage from './pages/ChannelsPage';
 import AIAgentsPage from './pages/AIAgentsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
+import DepartmentsPage from './pages/DepartmentsPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="channels" element={<ChannelsPage />} />
         <Route path="ai" element={<AIAgentsPage />} />
+        <Route path="departments" element={<DepartmentsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

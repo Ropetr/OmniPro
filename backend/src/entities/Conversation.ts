@@ -7,6 +7,7 @@ import { Channel } from './Channel';
 import { Contact } from './Contact';
 import { Message } from './Message';
 import { User } from './User';
+import { Department } from './Department';
 
 @Entity('conversations')
 export class Conversation {
@@ -64,6 +65,25 @@ export class Conversation {
 
   @Column({ type: 'boolean', default: false })
   isBot: boolean; // Being handled by AI
+
+  @Column({ type: 'uuid', nullable: true })
+  departmentId: string;
+
+  @ManyToOne(() => Department, { nullable: true })
+  @JoinColumn({ name: 'departmentId' })
+  department: Department;
+
+  @Column({ type: 'varchar', length: 50, default: 'queued' })
+  queueStatus: 'queued' | 'routing' | 'routed' | 'manual';
+
+  @Column({ type: 'int', default: 0 })
+  queuePosition: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  queuedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  firstResponseAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;

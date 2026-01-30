@@ -109,15 +109,54 @@ aiRouter.post('/agents/:agentId/learn', authorize('admin'), async (req: AuthRequ
   }
 });
 
-// Test AI reply
+// Test AI reply (counts toward readiness)
 aiRouter.post('/agents/:agentId/test', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
-    // Create a temporary context for testing
     const reply = await AIService.generateReply(req.tenantId!, 'test', message);
-    res.json({ reply: reply || 'No response generated' });
+
+    // Record test interaction for readiness tracking
+    await AIService.recordTestInteraction(req.params.agentId);
+
+    // Check if readiness changed
+    const readiness = await AIService.checkReadiness(req.params.agentId);
+
+    res.json({
+      reply: reply || 'Sem resposta gerada',
+      readiness,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Check readiness status
+aiRouter.get('/agents/:agentId/readiness', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const readiness = await AIService.checkReadiness(req.params.agentId);
+    res.json(readiness);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Activate bot for live auto-replies
+aiRouter.post('/agents/:agentId/activate', authorize('admin'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const agent = await AIService.activate(req.params.agentId, req.tenantId!);
+    res.json({ message: 'Agente IA ativado para atendimento ao vivo', agent });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Pause bot
+aiRouter.post('/agents/:agentId/pause', authorize('admin'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const agent = await AIService.pause(req.params.agentId, req.tenantId!);
+    res.json({ message: 'Agente IA pausado', agent });
   } catch (error) {
     next(error);
   }

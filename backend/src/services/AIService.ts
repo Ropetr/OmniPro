@@ -22,12 +22,19 @@ export class AIService {
   // Generate reply for a conversation
   static async generateReply(tenantId: string, conversationId: string, userMessage: string): Promise<string | null> {
     try {
-      // Find active AI agent for this tenant
+      // Find AI agent for this tenant
       const aiAgent = await aiAgentRepo().findOne({
         where: { tenantId, isActive: true },
         relations: ['knowledgeBases'],
       });
       if (!aiAgent) return null;
+
+      // Check readiness - only 'active' bots can auto-reply to real conversations
+      // 'training' and 'ready' bots can only be used via the /test endpoint
+      if (conversationId !== 'test' && aiAgent.readiness !== 'active') {
+        logger.debug(`AI agent ${aiAgent.id} not active (status: ${aiAgent.readiness}), skipping auto-reply`);
+        return null;
+      }
 
       const client = this.getClient();
 
@@ -282,5 +289,89 @@ Retorne no máximo 5 itens. Foque nos padrões mais frequentes.`,
       where: { aiAgentId: agentId },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  // === Readiness system ===
+
+  /**
+   * Check if an agent meets the criteria to become "ready".
+   * Automatically updates status from 'training' → 'ready' when criteria are met.
+   * Does NOT auto-activate — admin must explicitly activate.
+   */
+  static async checkReadiness(agentId: string): Promise<{
+    readiness: string;
+    knowledgeEntries: number;
+    minKnowledgeEntries: number;
+    testInteractions: number;
+    minTestInteractions: number;
+    knowledgeReady: boolean;
+    testingReady: boolean;
+    canActivate: boolean;
+  }> {
+    const agent = await aiAgentRepo().findOne({
+      where: { id: agentId },
+      relations: ['knowledgeBases'],
+    });
+    if (!agent) throw new Error('AI Agent not found');
+
+    const knowledgeEntries = agent.knowledgeBases?.filter(kb => kb.isActive).length || 0;
+    const knowledgeReady = knowledgeEntries >= agent.minKnowledgeEntries;
+    const testingReady = agent.testInteractions >= agent.minTestInteractions;
+    const canActivate = knowledgeReady && testingReady;
+
+    // Auto-promote from training to ready
+    if (agent.readiness === 'training' && canActivate) {
+      agent.readiness = 'ready';
+      await aiAgentRepo().save(agent);
+      logger.info(`AI agent ${agentId} is now READY for activation`);
+    }
+
+    return {
+      readiness: agent.readiness,
+      knowledgeEntries,
+      minKnowledgeEntries: agent.minKnowledgeEntries,
+      testInteractions: agent.testInteractions,
+      minTestInteractions: agent.minTestInteractions,
+      knowledgeReady,
+      testingReady,
+      canActivate,
+    };
+  }
+
+  /**
+   * Activate bot for live auto-replies. Only works if readiness is 'ready'.
+   */
+  static async activate(agentId: string, tenantId: string): Promise<AIAgent> {
+    const agent = await aiAgentRepo().findOne({ where: { id: agentId, tenantId } });
+    if (!agent) throw new Error('AI Agent not found');
+
+    if (agent.readiness === 'training') {
+      throw new Error('O agente ainda está em treinamento. Adicione mais conhecimento e faça mais testes antes de ativar.');
+    }
+
+    agent.readiness = 'active';
+    await aiAgentRepo().save(agent);
+    logger.info(`AI agent ${agentId} ACTIVATED for live auto-replies`);
+    return agent;
+  }
+
+  /**
+   * Pause bot (stop auto-replies but keep learned data).
+   */
+  static async pause(agentId: string, tenantId: string): Promise<AIAgent> {
+    const agent = await aiAgentRepo().findOne({ where: { id: agentId, tenantId } });
+    if (!agent) throw new Error('AI Agent not found');
+
+    agent.readiness = 'paused';
+    await aiAgentRepo().save(agent);
+    logger.info(`AI agent ${agentId} PAUSED`);
+    return agent;
+  }
+
+  /**
+   * Record a test interaction (used to track readiness).
+   */
+  static async recordTestInteraction(agentId: string): Promise<void> {
+    await aiAgentRepo().increment({ id: agentId }, 'testInteractions', 1);
   }
 }

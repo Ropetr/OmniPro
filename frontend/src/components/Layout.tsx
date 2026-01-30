@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, MessageSquare, Users, Radio, Bot, Settings,
-  LogOut, UserCircle, ChevronDown, Shield,
+  LogOut, UserCircle, ChevronDown, Shield, Building2,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/contacts', icon: Users, label: 'Contatos' },
   { to: '/channels', icon: Radio, label: 'Canais' },
   { to: '/ai', icon: Bot, label: 'Agentes IA' },
+  { to: '/departments', icon: Building2, label: 'Departamentos' },
   { to: '/users', icon: Shield, label: 'Usuários' },
   { to: '/settings', icon: Settings, label: 'Configurações' },
 ];

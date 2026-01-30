@@ -110,14 +110,22 @@ webhookRouter.post('/webchat/:channelId', async (req: Request, res: Response) =>
       sender: 'contact',
     });
 
-    // AI auto-reply if bot is active
+    // Try AI auto-reply first
     let botReply = null;
-    if (conversation.isBot) {
-      botReply = await ConversationService.processWithAI(
-        conversation.id,
-        channel.tenantId,
-        message
-      );
+    botReply = await ConversationService.processWithAI(
+      conversation.id,
+      channel.tenantId,
+      message
+    );
+
+    // If no bot reply and conversation is unassigned, route via queue
+    if (!botReply && !conversation.assignedToId) {
+      const { QueueService } = require('../services/QueueService');
+      try {
+        await QueueService.routeConversation(conversation.id, channel.tenantId);
+      } catch (e) {
+        logger.debug('Queue routing skipped:', e);
+      }
     }
 
     res.json({

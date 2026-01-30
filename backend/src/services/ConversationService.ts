@@ -17,20 +17,23 @@ export class ConversationService {
     status?: string;
     channelId?: string;
     assignedToId?: string;
+    departmentId?: string;
     page?: number;
     limit?: number;
   } = {}) {
-    const { status, channelId, assignedToId, page = 1, limit = 50 } = filters;
+    const { status, channelId, assignedToId, departmentId, page = 1, limit = 50 } = filters;
 
     const qb = convRepo().createQueryBuilder('c')
       .leftJoinAndSelect('c.contact', 'contact')
       .leftJoinAndSelect('c.channel', 'channel')
       .leftJoinAndSelect('c.assignedTo', 'agent')
+      .leftJoinAndSelect('c.department', 'department')
       .where('c.tenantId = :tenantId', { tenantId });
 
     if (status) qb.andWhere('c.status = :status', { status });
     if (channelId) qb.andWhere('c.channelId = :channelId', { channelId });
     if (assignedToId) qb.andWhere('c.assignedToId = :assignedToId', { assignedToId });
+    if (departmentId) qb.andWhere('c.departmentId = :departmentId', { departmentId });
 
     qb.orderBy('c.lastMessageAt', 'DESC', 'NULLS LAST')
       .skip((page - 1) * limit)
@@ -210,6 +213,15 @@ export class ConversationService {
     return conversation;
   }
 
+  // Track first response time (SLA metric)
+  static async trackFirstResponse(conversationId: string) {
+    const conversation = await convRepo().findOne({ where: { id: conversationId } });
+    if (conversation && !conversation.firstResponseAt) {
+      conversation.firstResponseAt = new Date();
+      await convRepo().save(conversation);
+    }
+  }
+
   // Process incoming message with AI if bot is active
   static async processWithAI(conversationId: string, tenantId: string, message: string) {
     try {
@@ -221,11 +233,16 @@ export class ConversationService {
 
       const reply = await AIService.generateReply(tenantId, conversationId, message);
       if (reply) {
-        await this.addMessage({
+        const botMessage = await this.addMessage({
           conversationId,
           content: reply,
           sender: 'bot',
         });
+
+        // Send bot reply to external channel
+        const { OutboundService } = require('./OutboundService');
+        await OutboundService.sendToChannel(conversationId, botMessage.id);
+
         return reply;
       }
     } catch (error) {

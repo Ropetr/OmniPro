@@ -6,6 +6,8 @@ import { User } from '../entities/User';
 import { Channel } from '../entities/Channel';
 import { AIAgent } from '../entities/AIAgent';
 import { KnowledgeBase } from '../entities/KnowledgeBase';
+import { Department } from '../entities/Department';
+import { UserDepartment } from '../entities/UserDepartment';
 import { logger } from '../utils/logger';
 
 async function seed() {
@@ -89,6 +91,52 @@ async function seed() {
       logger.info(`Channel created: ${def.name}`);
     }
   }
+
+  // Create departments
+  const deptRepo = AppDataSource.getRepository(Department);
+  const udRepo = AppDataSource.getRepository(UserDepartment);
+
+  const deptDefs = [
+    { name: 'Vendas', description: 'Equipe de vendas e pré-vendas', color: '#10b981', priority: 1, welcomeMessage: 'Olá! Bem-vindo ao setor de vendas. Como podemos ajudar?' },
+    { name: 'Suporte Técnico', description: 'Suporte e assistência técnica', color: '#3b82f6', priority: 2, welcomeMessage: 'Olá! Você está no suporte técnico. Descreva seu problema.' },
+    { name: 'Financeiro', description: 'Dúvidas sobre pagamentos e cobranças', color: '#f59e0b', priority: 0, welcomeMessage: 'Olá! Departamento financeiro. Como podemos ajudar?' },
+  ];
+
+  const createdDepts: Department[] = [];
+  for (const def of deptDefs) {
+    let dept = await deptRepo.findOne({ where: { name: def.name, tenantId: tenant.id } });
+    if (!dept) {
+      dept = deptRepo.create({ ...def, tenantId: tenant.id });
+      await deptRepo.save(dept);
+      logger.info(`Department created: ${def.name}`);
+    }
+    createdDepts.push(dept);
+  }
+
+  // Assign agents to departments
+  if (admin && createdDepts[0]) {
+    const existing = await udRepo.findOne({ where: { userId: admin.id, departmentId: createdDepts[0].id } });
+    if (!existing) {
+      await udRepo.save(udRepo.create({
+        userId: admin.id,
+        departmentId: createdDepts[0].id,
+        skills: ['vendas', 'negociação'],
+        skillLevel: 9,
+      }));
+    }
+  }
+  if (agent && createdDepts[1]) {
+    const existing = await udRepo.findOne({ where: { userId: agent.id, departmentId: createdDepts[1].id } });
+    if (!existing) {
+      await udRepo.save(udRepo.create({
+        userId: agent.id,
+        departmentId: createdDepts[1].id,
+        skills: ['suporte', 'troubleshooting'],
+        skillLevel: 7,
+      }));
+    }
+  }
+  logger.info('Departments and members created');
 
   // Create AI Agent
   let aiAgent = await aiAgentRepo.findOne({ where: { tenantId: tenant.id } });
