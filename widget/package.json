@@ -1,0 +1,13 @@
+{
+  "name": "omnipro-widget",
+  "version": "1.0.0",
+  "description": "OmniPro embeddable chat widget",
+  "main": "dist/widget.js",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "omnipro",
+  "version": "1.0.0",
+  "description": "OmniPro - Sistema de atendimento omnichannel estilo JivoChat",
+  "private": true,
+  "scripts": {
+    "dev": "docker-compose -f docker-compose.dev.yml up --build",
+    "prod": "docker-compose -f docker-compose.yml up --build -d",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm run dev",
+    "widget:dev": "cd widget && npm run dev",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../widget && npm install"
+  },
+  "author": "OmniPro Team",
+  "license": "MIT"
+}
